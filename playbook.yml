@@ -1,0 +1,70 @@
+---
+- name: Install, wtart and enable FTP 
+  hosts: all
+  tasks:
+    - name: Install FTP
+      yum:
+        name: vsftpd
+        state: present
+    - name: Start and enable FTP
+      service:
+        name: vsftpd
+        state: started
+        enabled: yes
+
+- name: Configure Firewalld for FTP service 
+  hosts: all
+  tasks:
+    - name: Configuring Firewall
+      firewalld:
+        service: ftp
+        permanent: yes
+        state: enabled
+        immediate: yes
+
+- name: Configure FTP with a custom vsftpd.conf file
+  hosts: all
+  vars:
+    anonymous_enable: 'YES'
+    local_enable: 'YES'
+    write_enable: 'YES'
+    anon_upload_enable: 'YES'
+  tasks:
+    - name: Copy FTP configuration using template
+      template:
+        src: vsftpd.j2
+        dest: /etc/vsftpd/vsftpd.conf
+      notify:
+        - vsftpd restart 
+  handlers:
+    - name: vsftpd restart
+      service:
+        name: vsftpd
+        state: restarted
+
+- name: Manage file permissions and SELinux
+  hosts: all
+  tasks:
+    - name: Install SELinux required package
+      yum: 
+        name: policycoreutils-python
+        state: present
+    - name: Set selinux ftpd_anon_write boolean
+      seboolean:
+        name: ftpd_anon_write
+        state: yes
+        persistent: yes
+    - name: Change SELinux type for target directory
+      sefcontext:
+        target: /var/ftp/pub
+        setype: public_content_rw_t
+        state: present
+      notify: 
+        - restorecon
+    - name: Change permissions for target directory
+      file:
+        path: /var/ftp/pub
+        mode: '0777'
+  handlers:
+    - name: restorecon
+      command: restorecon -v -R /var/ftp/pub
